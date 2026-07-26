@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <!-- スマホ表示用のメタタグ -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>25×32 横書き原稿用紙エディタ</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
+      background-color: #f0f2f5;
+      color: #333;
+      padding: 12px;
+    }
+    header {
+      text-align: center;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: 18px; }
+
+    /* タブ切り替え（スマホ向け） */
+    .tab-buttons {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+      justify-content: center;
+    }
+    .tab-btn {
+      flex: 1;
+      max-width: 200px;
+      padding: 10px;
+      background: #e0e0e0;
+      border: none;
+      border-radius: 6px;
+      font-weight: bold;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .tab-btn.active {
+      background-color: #2e7d32;
+      color: white;
+    }
+
+    .container {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+
+    /* 入力セクション */
+    .editor-section {
+      background: #fff;
+      padding: 16px;
+      border-radius: 8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+    .editor-section textarea {
+      width: 100%;
+      height: 300px;
+      padding: 12px;
+      font-size: 16px; /* スマホで自動ズームしないサイズ */
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      line-height: 1.5;
+    }
+    .info-bar {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #666;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    /* プレビューセクション */
+    .preview-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .controls {
+      margin-bottom: 12px;
+      width: 100%;
+      text-align: center;
+    }
+    .btn {
+      padding: 10px 20px;
+      background-color: #2e7d32;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      width: 100%;
+      max-width: 300px;
+    }
+
+    /* 原稿用紙ラッパー（横スクロール可能に） */
+    .paper-wrapper {
+      width: 100%;
+      overflow-x: auto;
+      background: #fff;
+      padding: 8px;
+      border-radius: 4px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    .paper {
+      min-width: 600px; /* 原稿用紙がつぶれない最小幅 */
+      background: #faf8f5;
+      padding: 16px;
+      border: 2px solid #2e7d32;
+    }
+    .grid-container {
+      display: grid;
+      grid-template-columns: repeat(25, 1fr);
+      grid-template-rows: repeat(32, 1fr);
+      border-top: 1px solid #a3d2a1;
+      border-left: 1px solid #a3d2a1;
+      aspect-ratio: 25 / 32;
+    }
+    .cell {
+      border-right: 1px solid #a3d2a1;
+      border-bottom: 1px solid #a3d2a1;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      font-family: "Yu Mincho", "Hiragino Mincho ProN", serif;
+      font-size: 12px;
+      color: #1a1a1a;
+    }
+
+    /* デスクトップ表示（画面が広い場合） */
+    @media (min-width: 850px) {
+      .tab-buttons { display: none; }
+      .container { flex-direction: row; }
+      .editor-section { flex: 1; }
+      .preview-section { flex: 1.5; display: flex !important; }
+      .editor-section { display: block !important; }
+      .btn { width: auto; }
+      .paper { min-width: auto; }
+      .cell { font-size: 15px; }
+    }
+
+    /* スマホ切り替え用クラス */
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>25×32 横書き原稿用紙</h1>
+</header>
+
+<!-- スマホ用タブ切り替え -->
+<div class="tab-buttons">
+  <button class="tab-btn active" id="tabEdit" onclick="switchTab('edit')">✍️ 入力</button>
+  <button class="tab-btn" id="tabPreview" onclick="switchTab('preview')">📄 原稿用紙</button>
+</div>
+
+<div class="container">
+  <!-- 入力エリア -->
+  <div class="editor-section" id="editorSec">
+    <textarea id="textInput" placeholder="ここに文章を入力してください..."></textarea>
+    <div class="info-bar">
+      <span>文字数: <strong id="charCount">0</strong> / 800字</span>
+    </div>
+  </div>
+
+  <!-- プレビューエリア -->
+  <div class="preview-section hidden" id="previewSec">
+    <div class="controls">
+      <button class="btn" onclick="window.print()">🖨️ PDF保存 / 印刷</button>
+    </div>
+    <div class="paper-wrapper">
+      <div class="paper">
+        <div class="grid-container" id="grid"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const COLS = 25;
+  const ROWS = 32;
+  const TOTAL_CELLS = COLS * ROWS;
+
+  const gridElement = document.getElementById('grid');
+  const textInput = document.getElementById('textInput');
+  const charCount = document.getElementById('charCount');
+
+  function createGrid() {
+    gridElement.innerHTML = '';
+    for (let i = 0; i < TOTAL_CELLS; i++) {
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      gridElement.appendChild(cell);
+    }
+  }
+
+  function updateGrid() {
+    const text = textInput.value;
+    const cells = gridElement.children;
+
+    for (let i = 0; i < TOTAL_CELLS; i++) {
+      cells[i].textContent = '';
+    }
+
+    let cellIndex = 0;
+    for (let i = 0; i < text.length; i++) {
+      if (cellIndex >= TOTAL_CELLS) break;
+      const char = text[i];
+      if (char === '\n') {
+        const remainder = cellIndex % COLS;
+        if (remainder !== 0) cellIndex += (COLS - remainder);
+      } else {
+        cells[cellIndex].textContent = char;
+        cellIndex++;
+      }
+    }
+    charCount.textContent = Math.min(text.replace(/\n/g, '').length, TOTAL_CELLS);
+  }
+
+  // タブ切り替え機能（スマホ用）
+  function switchTab(tab) {
+    const editSec = document.getElementById('editorSec');
+    const prevSec = document.getElementById('previewSec');
+    const tabEdit = document.getElementById('tabEdit');
+    const tabPreview = document.getElementById('tabPreview');
+
+    if (tab === 'edit') {
+      editSec.classList.remove('hidden');
+      prevSec.classList.add('hidden');
+      tabEdit.classList.add('active');
+      tabPreview.classList.remove('active');
+    } else {
+      editSec.classList.add('hidden');
+      prevSec.classList.remove('hidden');
+      tabEdit.classList.remove('active');
+      tabPreview.classList.add('active');
+    }
+  }
+
+  createGrid();
+  textInput.addEventListener('input', updateGrid);
+</script>
+
+</body>
+</html>
